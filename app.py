@@ -1,5 +1,5 @@
 import streamlit as st
-import pickle  # Built-in module, no extra installation required!
+import joblib  # Built-in module, no extra installation required!
 import numpy as np
 
 # ---------------------------------------------------------
@@ -69,10 +69,9 @@ MODEL_PATH = "best_regression_model.pkl"
 
 @st.cache_resource
 def load_model():
-    """Load model using built-in pickle to avoid external dependencies."""
+    """Load model using joblib to match the file's binary format."""
     try:
-        with open(MODEL_PATH, "rb") as f:
-            model = pickle.load(f)
+        model = joblib.load(MODEL_PATH)
         return model
     except FileNotFoundError:
         st.error(f"⚠️ Could not find model file `{MODEL_PATH}` in your repository root directory.")
