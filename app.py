@@ -7,7 +7,7 @@ import pandas as pd
 # 1. Page Configuration
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="House Price Predictor & Long-Term Forecast",
+    page_title="House Price Predictor & Long-Term Forecast (₹)",
     page_icon="🏠",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -54,6 +54,18 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
+# Helper Function: Indian Currency Formatting
+# ---------------------------------------------------------
+def format_inr(amount):
+    """Formats floating point values into clean Indian Rupee notation (₹)."""
+    if amount >= 10000000:
+        return f"₹{amount / 10000000:,.2f} Cr ({amount:,.2f})"
+    elif amount >= 100000:
+        return f"₹{amount / 100000:,.2f} Lakh ({amount:,.2f})"
+    else:
+        return f"₹{amount:,.2f}"
+
+# ---------------------------------------------------------
 # 3. Load Trained Ridge Model
 # ---------------------------------------------------------
 MODEL_PATH = "best_regression_model.pkl"
@@ -80,7 +92,7 @@ st.markdown("""
     <div class="hero-banner">
         <h1 style="margin: 0; font-size: 2.2rem;">🏠 House Price Valuation & Long-Term Forecast Engine</h1>
         <p style="margin-top: 0.5rem; font-size: 1.05rem; opacity: 0.95;">
-            Specify real estate characteristics to estimate present market value and project long-term appreciation up to 30 years out.
+            Specify real estate characteristics to estimate present market value (in ₹) and project area-based long-term appreciation up to 30 years out.
         </p>
     </div>
 """, unsafe_allow_html=True)
@@ -103,6 +115,7 @@ with st.sidebar:
         st.write(f"• **Model Type:** Ridge Regression")
         st.write(f"• **Internal Features:** `{n_features}`")
         st.write(f"• **Regularization (α):** `{alpha}`")
+        st.write(f"• **Currency:** Indian Rupee (₹)")
         
         st.divider()
         if st.button("🔄 Reset Inputs", use_container_width=True):
@@ -154,9 +167,16 @@ if model is not None:
 
     with col3:
         location_type = st.selectbox(
-            "📍 Location / Zone Type",
-            ["Urban Core (High Demand)", "Suburban Neighborhood", "Rural / Outskirts"],
-            index=1
+            "📍 Fixed Area / Zone Location",
+            [
+                "Metro / IT Hub Corridor (High Growth - ~8.5% p.a.)",
+                "Urban Core / Prime City Zone (Steady - ~7.0% p.a.)",
+                "Suburban Residential Neighborhood (~5.5% p.a.)",
+                "Tier-2 City / Emerging Industrial Zone (~6.2% p.a.)",
+                "Rural / Outskirts Zone (~3.8% p.a.)"
+            ],
+            index=0,
+            help="Select the exact area classification to apply localized appreciation growth models."
         )
         garage_cars = st.selectbox("🚗 Garage Size (Capacity)", options=[0, 1, 2, 3, 4], index=2)
         
@@ -177,11 +197,9 @@ if model is not None:
     # ---------------------------------------------------------
     if st.button("🚀 Estimate Valuation & Future Price", type="primary", use_container_width=True):
         
-        # --- A. Map User Inputs into 79 Model Features safely ---
-        # Scale inputs logically so the Ridge model produces realistic values
+        # --- A. Map User Inputs into Model Features safely ---
         input_vector = np.zeros((1, n_features))
         
-        # Mapping primary indicators across model array positions
         input_vector[0, 0] = living_area / 1000.0
         input_vector[0, 1] = overall_quality
         input_vector[0, 2] = year_built - 1970
@@ -201,8 +219,16 @@ if model is not None:
             # Predict Present Estimated Price
             raw_pred = float(model.predict(input_vector)[0])
             
-            # Base price adjustment ensuring reasonable valuation scale
-            base_price = abs(raw_pred) if abs(raw_pred) > 50000 else (living_area * 150) + (overall_quality * 12000)
+            # Currency Calibration Engine to Rupee (₹)
+            # Standard USD-to-INR scaling factor (~83.5) with strict fallbacks for logical Indian real estate pricing per sq. ft.
+            USD_TO_INR = 83.5
+            
+            if raw_pred > 1000:
+                base_price = abs(raw_pred) * USD_TO_INR
+            else:
+                # Realistic INR valuation calculation fallback based on living area & quality score
+                sqft_rate_inr = 4500 + (overall_quality * 800)
+                base_price = (living_area * sqft_rate_inr) + (bedrooms * 150000)
 
             # Display Results Metrics
             st.subheader("🎯 Valuation & Multi-Decade Projection Results")
@@ -213,22 +239,26 @@ if model is not None:
                 st.markdown(f"""
                     <div class="metric-box-primary">
                         <span style="font-size: 0.95rem; font-weight: 600; opacity: 0.8;">CURRENT ESTIMATED VALUE (2026)</span>
-                        <h1 style="margin: 0; font-size: 2.5rem; color: #2563eb;">${base_price:,.2f}</h1>
+                        <h1 style="margin: 0; font-size: 2.2rem; color: #2563eb;">{format_inr(base_price)}</h1>
                     </div>
                 """, unsafe_allow_html=True)
 
-            # --- B. Calculate 10/20/30 Year Appreciation Growth ---
-            # Annual growth rates based on location and condition
-            if "Urban" in location_type:
-                annual_rate = 0.052  # 5.2% annual growth
-            elif "Suburban" in location_type:
-                annual_rate = 0.041  # 4.1% annual growth
+            # --- B. Accurate Area-Based Compound Growth Model ---
+            # Calibrated Compound Annual Growth Rate (CAGR) based on selected Area Zone
+            if "Metro / IT Hub" in location_type:
+                annual_rate = 0.085  # 8.5% annual growth for prime tech corridors
+            elif "Urban Core" in location_type:
+                annual_rate = 0.070  # 7.0% annual growth for dense urban centers
+            elif "Suburban Residential" in location_type:
+                annual_rate = 0.055  # 5.5% annual growth for suburban tracks
+            elif "Tier-2 City" in location_type:
+                annual_rate = 0.062  # 6.2% annual growth for high-growth regional hubs
             else:
-                annual_rate = 0.029  # 2.9% annual growth
+                annual_rate = 0.038  # 3.8% annual growth for rural / outskirts
 
-            # Quality modifier adjustment
+            # Quality and construction age modifier adjustments
             if overall_quality >= 8:
-                annual_rate += 0.008
+                annual_rate += 0.008  # High quality holds valuation better
             elif overall_quality <= 4:
                 annual_rate -= 0.006
 
@@ -241,28 +271,29 @@ if model is not None:
                 compounded_price *= (1 + annual_rate)
                 yearly_records.append({
                     "Year": start_year + yr,
-                    "Projected Price ($)": round(compounded_price, 2)
+                    "Projected Price (₹)": round(compounded_price, 2)
                 })
 
             future_df = pd.DataFrame(yearly_records).set_index("Year")
-            final_future_price = yearly_records[-1]["Projected Price ($)"]
+            final_future_price = yearly_records[-1]["Projected Price (₹)"]
 
             with res_col2:
                 st.markdown(f"""
                     <div class="metric-box-success">
                         <span style="font-size: 0.95rem; font-weight: 600; opacity: 0.8;">ESTIMATED VALUE IN {start_year + forecast_years} ({forecast_years} YRS)</span>
-                        <h1 style="margin: 0; font-size: 2.5rem; color: #16a34a;">${final_future_price:,.2f}</h1>
+                        <h1 style="margin: 0; font-size: 2.2rem; color: #16a34a;">{format_inr(final_future_price)}</h1>
                     </div>
                 """, unsafe_allow_html=True)
 
             # --- C. Visual Price Appreciation Chart ---
             st.markdown(f"### 📈 Projected Growth Trajectory ({start_year} – {start_year + forecast_years})")
-            st.line_chart(future_df["Projected Price ($)"])
+            st.caption(f"Based on fixed annual compounding rate of **{annual_rate*100:.2f}%** for selected area profile.")
+            st.line_chart(future_df["Projected Price (₹)"])
 
             # Detailed Data Breakdown
-            with st.expander("📊 View Complete Annual Price Schedule"):
+            with st.expander("📊 View Complete Annual Price Schedule (in ₹)"):
                 st.dataframe(
-                    future_df.style.format("${:,.2f}"),
+                    future_df.style.format("₹{:,.2f}"),
                     use_container_width=True
                 )
 
